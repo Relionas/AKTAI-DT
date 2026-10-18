@@ -31,17 +31,18 @@ def _frame_at(path,t):
  if not ok:return None
  good,enc=cv2.imencode('.jpg',frame,[cv2.IMWRITE_JPEG_QUALITY,85]); return base64.b64encode(enc).decode('ascii') if good else None
 def _sync(path,v):
- item=dict(v); t=item.get('timecode_sec'); image=_frame_at(path,t)
- if image:item['evidence_frames']=[{'timestamp_sec':round(float(t),1),'image_base64':image}]
+ item=dict(v); typ=str(item.get('type','')); t=item.get('timecode_sec'); image=_frame_at(path,t)
+ item['evidence_type']=typ; item['evidence_source']='temporal_detector'; item['evidence_frames']=[{'timestamp_sec':round(float(t),1),'image_base64':image}] if image else []
  return item
 def _candidate(path,typ):
  cap=cv2.VideoCapture(path); fps=cap.get(cv2.CAP_PROP_FPS) or 1.; n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); duration=n/fps if n else 0.; cap.release(); t=duration*(.94 if typ=='сортировка' else .72); return round(t,1),_frame_at(path,t)
 def _merge(result,ml,path):
- if not ml:return enrich_result({**result,'violations':[_sync(path,v) for v in result.get('violations',[])]})
+ if not ml:return enrich_result(result)
  evidence={v.get('type'):v for v in result.get('violations',[])}; merged=[]
  for item in ml.get('violations',[]):
-  if item['type'] in evidence: merged.append(_sync(path,{**evidence[item['type']],'confidence':item.get('confidence')})); continue
-  t,img=_candidate(path,item['type']); merged.append({'type':item['type'],'confidence':item.get('confidence'),'timecode_sec':t,'description':'Модель обнаружила возможный тип нарушения; кадр является ориентировочным и требует проверки оператором.','evidence_frames':[{'timestamp_sec':t,'image_base64':img}] if img else []})
+  typ=item['type']
+  if typ in evidence: merged.append(_sync(path,{**evidence[typ],'confidence':item.get('confidence')})); continue
+  t,img=_candidate(path,typ); merged.append({'type':typ,'evidence_type':typ,'evidence_source':'type_candidate_localizer','confidence':item.get('confidence'),'timecode_sec':t,'description':'Модель обнаружила возможный тип нарушения; кадр является ориентировочным и требует проверки оператором.','evidence_frames':[{'timestamp_sec':t,'image_base64':img}] if img else []})
  return enrich_result({**result,'verdict':ml.get('verdict',result.get('verdict','no_violation')),'violations':merged,'ml_violation_probability':ml.get('violation_probability'),'inference_mode':'benchmark_ground_truth' if benchmark_mode else 'production_ml_temporal'})
 @app.get('/')
 async def root():return {'service':'ForteBank Violation Detector API','version':'2.1.0','status':'running','ml_classifier_loaded':ml_classifier is not None,'benchmark_mode':benchmark_mode}
@@ -53,9 +54,9 @@ async def analyze_video(file:UploadFile=File(...),api_key:str=Depends(verify_api
  jid=str(uuid.uuid4())[:8]; path=UPLOAD_DIR/f'{jid}.mov'; path.write_bytes(await file.read()); jobs[jid]={'job_id':jid,'status':'processing','filename':file.filename,'file_path':str(path),'created_at':datetime.now().isoformat()}; asyncio.create_task(process_video(jid)); return {'job_id':jid,'status':'processing'}
 async def process_video(jid):
  try:
-  job=jobs[jid]; result=await asyncio.to_thread(detector.analyze_video,job['file_path'],jid,EVIDENCE_DIR)
+  job=jobs[jid]; path=job['file_path']; result=await asyncio.to_thread(detector.analyze_video,path,jid,EVIDENCE_DIR)
   if ml_classifier is not None:
-   row=await asyncio.to_thread(extract_features_for_inference,job['file_path'],str(ml_classifier.device),5); ml=await asyncio.to_thread(ml_classifier.predict,_feature_vector(row)); result=_merge(result,ml,job['file_path'])
+   row=await asyncio.to_thread(extract_features_for_inference,path,str(ml_classifier.device),5); ml=await asyncio.to_thread(ml_classifier.predict,_feature_vector(row)); result=_merge(result,ml,path)
   else:result=enrich_result(result)
   (RESULTS_DIR/f'{jid}.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf8'); jobs[jid].update({'status':'done','result':result,'completed_at':datetime.now().isoformat()})
  except Exception as exc:jobs[jid].update({'status':'failed','error':str(exc)})
