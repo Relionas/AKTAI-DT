@@ -5,7 +5,7 @@
 - **Web interface URL:** `http://localhost:8080/frontend/index.html`
 - **API base URL:** `http://localhost:8000/api/v1`
 - **API key:** `fortebank-aktai-2026`
-- **Git Link:** `Not available — local submission package`
+- **Git Link:** `https://github.com/Relionas/AKTAI-DT`
 
 The URLs are local to the demonstration computer. A remote jury cannot access `localhost` without an approved network deployment.
 

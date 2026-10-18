@@ -9,7 +9,7 @@ This package provides a local-only review service for visual indicators of cashi
 - Web interface URL: `file:///C:/Users/vanac/OneDrive/Desktop/FINAL_PROJECT/frontend/index.html`
 - API base URL: `http://localhost:8000/api/v1`
 - API key: `fortebank-aktai-2026`
-- Git Link: `Not available — local submission package`
+- Git Link: `https://github.com/Relionas/AKTAI-DT`
 
 ## Start
 

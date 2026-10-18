@@ -13,7 +13,7 @@ The service is an assistive review tool. It reports visual indicators for human 
 | Web interface URL | `http://localhost:8080/frontend/index.html` |
 | API base URL | `http://localhost:8000/api/v1` |
 | API key for the jury | `fortebank-aktai-2026` |
-| Git Link | `Not available — local submission package` |
+| Git Link | `https://github.com/Relionas/AKTAI-DT` |
 
 These addresses work on the computer running the service. A remote jury requires an approved reachable host; `localhost` is not accessible from another computer.
 
