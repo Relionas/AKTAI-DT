@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Runtime data
+/data/uploads/*
+/data/results/*
+/data/evidence_frames/*
+!/data/uploads/.gitkeep
+!/data/results/.gitkeep
+!/data/evidence_frames/.gitkeep
+
+# Local secrets and environment
+.env
+*.local
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Temporary reports
+*.log
+*.tmp
+
+# Model caches
+.cache/
+.huggingface/
+
+# Keep trained model artifacts explicitly tracked; do not ignore *.pth/*.pkl.

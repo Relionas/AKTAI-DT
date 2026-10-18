@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForteBank Violation Detector</title>
+    <style>
+        :root {
+            --bg-deep: #05070C;
+            --bg-dark: #0A0D12;
+            --bg-mid: #0F131C;
+            --bg-light: #161D2B;
+            --bg-lighter: #1E2636;
+            --accent: #38BDF8;
+            --accent-dim: #0EA5E9;
+            --text: #E2E8F0;
+            --text-dim: #94A3B8;
+            --success: #6EE7B7;
+            --error: #F87171;
+            --warning: #FBBF24;
+
+            --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+
+            --space-xs: 0.5rem;
+            --space-sm: 0.75rem;
+            --space-md: 1rem;
+            --space-lg: 1.5rem;
+            --space-xl: 2rem;
+            --space-2xl: 3rem;
+
+            --radius-sm: 0.375rem;
+            --radius-md: 0.5rem;
+            --radius-lg: 0.75rem;
+            --radius-full: 999px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: linear-gradient(135deg, var(--bg-deep) 0%, var(--bg-dark) 50%, var(--bg-mid) 100%);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--space-2xl) var(--space-lg);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: var(--space-2xl);
+        }
+
+        h1 {
+            font-family: var(--font-display);
+            font-size: clamp(1.75rem, 4vw, 2.5rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text);
+            margin-bottom: var(--space-sm);
+        }
+
+        .subtitle {
+            font-size: clamp(0.875rem, 2vw, 1rem);
+            color: var(--text-dim);
+            letter-spacing: 0.01em;
+        }
+
+        .upload-section {
+            background: var(--bg-light);
+            border-radius: var(--radius-lg);
+            padding: var(--space-2xl);
+            margin-bottom: var(--space-xl);
+            border: 1px solid rgba(56, 189, 248, 0.1);
+        }
+
+        .drop-zone {
+            border: 2px dashed var(--accent-dim);
+            border-radius: var(--radius-md);
+            padding: var(--space-2xl);
+            text-align: center;
+            transition: all 0.3s ease;
+            background: var(--bg-dark);
+            cursor: pointer;
+        }
+
+        .drop-zone:hover {
+            border-color: var(--accent);
+            background: var(--bg-mid);
+        }
+
+        .drop-zone.dragging {
+            border-color: var(--accent);
+            background: var(--bg-mid);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: var(--space-md);
+            color: var(--accent);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .btn {
+            font-family: var(--font-body);
+            font-weight: 600;
+            padding: var(--space-sm) var(--space-xl);
+            border-radius: var(--radius-full);
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9375rem;
+            letter-spacing: 0.01em;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg-deep);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-dim);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(56, 189, 248, 0.2);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .status-section {
+            background: var(--bg-light);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            margin-bottom: var(--space-xl);
+            display: none;
+        }
+
+        .status-section.visible {
+            display: block;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: var(--space-xs) var(--space-md);
+            border-radius: var(--radius-full);
+            font-size: 0.875rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        .status-processing {
+            background: rgba(251, 191, 36, 0.15);
+            color: var(--warning);
+        }
+
+        .status-done {
+            background: rgba(110, 231, 183, 0.15);
+            color: var(--success);
+        }
+
+        .status-failed {
+            background: rgba(248, 113, 113, 0.15);
+            color: var(--error);
+        }
+
+        .results-section {
+            display: none;
+        }
+
+        .results-section.visible {
+            display: block;
+        }
+
+        .verdict-card {
+            background: var(--bg-light);
+            border-radius: var(--radius-lg);
+            padding: var(--space-xl);
+            margin-bottom: var(--space-xl);
+            border-left: 4px solid var(--accent);
+        }
+
+        .verdict-card.violation {
+            border-left-color: var(--error);
+        }
+
+        .verdict-card.no-violation {
+            border-left-color: var(--success);
+        }
+
+        .violation-card {
+            background: var(--bg-mid);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-md);
+            border: 1px solid rgba(248, 113, 113, 0.2);
+        }
+
+        .violation-type {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--error);
+            margin-bottom: var(--space-sm);
+        }
+
+        .timecode {
+            display: inline-block;
+            background: var(--bg-deep);
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius-sm);
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 0.875rem;
+            color: var(--accent);
+            margin-bottom: var(--space-md);
+        }
+
+        .evidence-frames {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-md);
+            margin-top: var(--space-md);
+        }
+
+        .evidence-frame {
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        .evidence-frame img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid rgba(56, 189, 248, 0.2);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: var(--space-md) auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            margin-top: var(--space-2xl);
+            padding-top: var(--space-xl);
+            border-top: 1px solid rgba(56, 189, 248, 0.1);
+            color: var(--text-dim);
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ForteBank Violation Detector</h1>
+            <p class="subtitle">AI-сервис для выявления нарушений кассовой дисциплины</p>
+        </header>
+
+        <!-- Upload Section -->
+        <div class="upload-section">
+            <div class="drop-zone" id="dropZone">
+                <div class="upload-icon">📹</div>
+                <p style="margin-bottom: var(--space-md); color: var(--text);">
+                    Перетащите .mov файл сюда или нажмите для выбора
+                </p>
+                <input type="file" id="fileInput" accept=".mov">
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                    Выбрать видео
+                </button>
+            </div>
+            <div style="margin-top: var(--space-lg); text-align: center;">
+                <button class="btn btn-primary" id="uploadBtn" disabled>
+                    Загрузить и проанализировать
+                </button>
+            </div>
+        </div>
+
+        <!-- Status Section -->
+        <div class="status-section" id="statusSection">
+            <h2 style="margin-bottom: var(--space-md);">Статус обработки</h2>
+            <div style="display: flex; align-items: center; gap: var(--space-md);">
+                <span class="status-badge status-processing" id="statusBadge">Processing</span>
+                <span id="statusText">Анализируем видео...</span>
+            </div>
+            <div class="spinner" id="spinner"></div>
+        </div>
+
+        <!-- Results Section -->
+        <div class="results-section" id="resultsSection">
+            <div class="verdict-card" id="verdictCard">
+                <h2 style="margin-bottom: var(--space-md);">Результат анализа</h2>
+                <div id="verdictText"></div>
+            </div>
+
+            <div id="violationsContainer"></div>
+        </div>
+
+        <footer class="footer">
+            <p>ForteBank Datathon 2026 | Team Alpha</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        const API_KEY = 'fortebank-aktai-2026';
+
+        let selectedFile = null;
+        let currentJobId = null;
+
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const statusSection = document.getElementById('statusSection');
+        const resultsSection = document.getElementById('resultsSection');
+
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (event) => { event.preventDefault(); dropZone.classList.add('dragging'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragging'));
+        dropZone.addEventListener('drop', (event) => {
+            event.preventDefault();
+            dropZone.classList.remove('dragging');
+            if (event.dataTransfer.files.length > 0) handleFileSelect(event.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (event) => {
+            if (event.target.files.length > 0) handleFileSelect(event.target.files[0]);
+        });
+
+        function handleFileSelect(file) {
+            if (!file.name.toLowerCase().endsWith('.mov')) {
+                alert('Пожалуйста, выберите файл формата .mov');
+                return;
+            }
+            selectedFile = file;
+            uploadBtn.disabled = false;
+            dropZone.querySelector('p').textContent = `Выбран файл: ${file.name}`;
+        }
+
+        uploadBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+            uploadBtn.disabled = true;
+            statusSection.classList.add('visible');
+            resultsSection.classList.remove('visible');
+            document.getElementById('spinner').style.display = 'block';
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                const response = await fetch(`${API_BASE}/api/v1/analyze`, {
+                    method: 'POST',
+                    headers: { 'X-API-Key': API_KEY },
+                    body: formData
+                });
+                if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
+                const data = await response.json();
+                if (!data.job_id) throw new Error('Server did not return job_id');
+                currentJobId = data.job_id;
+                pollJobStatus();
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Ошибка при загрузке видео: ' + error.message);
+                uploadBtn.disabled = false;
+            }
+        });
+
+        async function pollJobStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/jobs/${currentJobId}`, { headers: { 'X-API-Key': API_KEY } });
+                if (!response.ok) throw new Error(`Polling failed: ${response.status}`);
+                const data = await response.json();
+                updateStatus(data);
+                if (data.status === 'processing') setTimeout(pollJobStatus, 2000);
+                else if (data.status === 'done') displayResults(data);
+                else if (data.status === 'failed') {
+                    alert('Ошибка обработки видео: ' + (data.error || 'неизвестная ошибка'));
+                    uploadBtn.disabled = false;
+                }
+            } catch (error) {
+                console.error('Polling error:', error);
+                setTimeout(pollJobStatus, 3000);
+            }
+        }
+
+        function updateStatus(data) {
+            const badge = document.getElementById('statusBadge');
+            const text = document.getElementById('statusText');
+            badge.className = 'status-badge status-' + data.status;
+            badge.textContent = data.status.toUpperCase();
+            if (data.status === 'processing') text.textContent = 'Анализируем видео...';
+            if (data.status === 'done') { text.textContent = 'Анализ завершён'; document.getElementById('spinner').style.display = 'none'; }
+            if (data.status === 'failed') { text.textContent = 'Ошибка обработки'; document.getElementById('spinner').style.display = 'none'; }
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+        }
+
+        function displayResults(data) {
+            statusSection.classList.remove('visible');
+            resultsSection.classList.add('visible');
+            const verdictCard = document.getElementById('verdictCard');
+            const verdictText = document.getElementById('verdictText');
+            if (data.verdict === 'violation') {
+                verdictCard.className = 'verdict-card violation';
+                verdictText.innerHTML = '<h3 style="color: var(--error);">Обнаружены признаки возможных нарушений</h3>';
+            } else {
+                verdictCard.className = 'verdict-card no-violation';
+                verdictText.innerHTML = '<h3 style="color: var(--success);">Нарушение не обнаружено</h3>';
+            }
+            const container = document.getElementById('violationsContainer');
+            container.innerHTML = '';
+            (data.violations || []).forEach(violation => {
+                const card = document.createElement('div');
+                card.className = 'violation-card';
+                const framesHtml = (violation.evidence_frames || []).map(frame => `
+                    <div class="evidence-frame"><img src="data:image/jpeg;base64,${frame.image_base64}" alt="Кадр-доказательство"></div>
+                `).join('');
+                card.innerHTML = `
+                    <div class="violation-type">${escapeHtml(violation.type)}</div>
+                    <div class="timecode">${violation.timecode_sec == null ? 'Таймкод уточняется' : `Таймкод: ${escapeHtml(violation.timecode_sec)} с`}</div>
+                    <p style="color: var(--text-dim); margin-top: var(--space-sm);">${escapeHtml(violation.description)}</p>
+                    ${violation.confidence == null ? '' : `<p style="color: var(--text-dim); margin-top: var(--space-sm);">Уверенность модели: ${Math.round(Number(violation.confidence) * 100)}%</p>`}
+                    ${framesHtml ? `<div class="evidence-frames">${framesHtml}</div>` : '<p style="color: var(--text-dim); margin-top: var(--space-md);">Кадр-доказательство недоступен; требуется проверка оператором.</p>'}
+                `;
+                container.appendChild(card);
+            });
+            uploadBtn.disabled = false;
+        }
+    </script>
+</body>
+</html>

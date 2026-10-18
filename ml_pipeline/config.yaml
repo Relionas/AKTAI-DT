@@ -1,0 +1,123 @@
+# ML Pipeline Configuration for ForteBank Violation Detection
+# Team: AKTAI
+
+# Data Paths
+data:
+  videos_dir: "C:/Users/vanac/OneDrive/Desktop/datathon problem/open/videos"
+  annotations: "C:/Users/vanac/AppData/Local/Claude-3p/local-agent-mode-sessions/e06a215e/00000000/7555a0bc/uploads/open_labels1 (2)-363b0804.xlsx"
+  cache_dir: "C:/Users/vanac/OneDrive/Desktop/FINAL_PROJECT/ml_pipeline/cache"
+  features_dir: "C:/Users/vanac/OneDrive/Desktop/FINAL_PROJECT/ml_pipeline/features"
+  models_dir: "C:/Users/vanac/OneDrive/Desktop/FINAL_PROJECT/ml_pipeline/models"
+
+# Video Processing
+video:
+  target_fps: 5  # Sample 5 frames per second
+  max_frames: 300  # Maximum frames per video
+  resize_width: 224
+  resize_height: 224
+
+# Models
+models:
+  # Object Detection
+  yolo:
+    model: "yolov8n.pt"
+    conf_threshold: 0.25
+    iou_threshold: 0.45
+    classes: [0, 24, 25, 26, 27, 28, 39, 41, 63, 64, 65, 66, 67]  # person, backpack, handbag, etc
+
+  # Visual Feature Extractor
+  visual:
+    model: "efficientnet_b4"
+    pretrained: true
+    freeze_backbone: true
+
+  # Temporal Model
+  temporal:
+    model: "slowfast_r50"
+    pretrained: true
+
+# Training
+training:
+  batch_size: 4
+  epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  early_stopping_patience: 10
+  validation_split: 0.2
+
+  # Augmentation
+  augmentation:
+    horizontal_flip: 0.5
+    vertical_flip: 0.0
+    rotation: 15
+    brightness: 0.2
+    contrast: 0.2
+
+# Violation Types (14 types)
+violation_types:
+  - идентификация  # ID verification
+  - сортировка     # Money sorting
+  - дверь          # Door violations
+  - оставление     # Leaving workplace
+  - ценности       # Valuables
+  - ранее          # Previously accepted cash
+  - посторонний    # Unauthorized persons
+  - завершения     # Cash completion
+  - ключ           # Key in lock
+  - сейф           # Safe violations
+  - штамп          # Stamp violations
+  - личные         # Personal items
+  - проверка       # Banknote verification
+  - пища           # Food/drinks
+
+# Camera Angles
+camera_angles:
+  - спина  # Back view
+  - лицо   # Face view
+
+# Feature Engineering
+features:
+  # Object-based features
+  object_features:
+    - person_count
+    - person_absence_duration
+    - bag_presence
+    - phone_presence
+    - bottle_presence
+    - cup_presence
+    - multiple_people
+
+  # Motion features
+  motion_features:
+    - optical_flow_magnitude
+    - hand_movement
+    - body_movement
+
+  # Temporal features
+  temporal_features:
+    - event_duration
+    - sequence_patterns
+
+# Rule-based Thresholds
+thresholds:
+  оставление:
+    min_absence_duration: 3.0  # seconds
+  посторонний:
+    min_people_count: 2
+    min_duration: 2.0
+  личные:
+    min_bag_duration: 3.0
+  пища:
+    min_food_duration: 2.0
+
+# Hardware
+hardware:
+  device: "cuda"  # RTX 4070
+  num_workers: 4
+  pin_memory: true
+
+# Logging
+logging:
+  level: "INFO"
+  save_tensorboard: true
+  tensorboard_dir: "C:/Users/vanac/OneDrive/Desktop/FINAL_PROJECT/ml_pipeline/runs"

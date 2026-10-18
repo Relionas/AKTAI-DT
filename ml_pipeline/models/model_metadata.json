@@ -1,0 +1,46 @@
+{
+  "schema_version": 4,
+  "task": "binary_violation_plus_multilabel_types",
+  "input_dim": 111,
+  "classes": [
+    "идентификация",
+    "сортировка",
+    "дверь",
+    "оставление",
+    "ценности",
+    "ранее",
+    "посторонний",
+    "завершения",
+    "ключ",
+    "сейф",
+    "штамп",
+    "личные",
+    "проверка",
+    "пища"
+  ],
+  "ensemble_model": "ensemble_model.pkl",
+  "binary_model": "binary_model.pth",
+  "multilabel_model": "multilabel_model.pth",
+  "binary_threshold": 0.25,
+  "multilabel_thresholds": [
+    0.25,
+    0.25,
+    0.25,
+    0.25,
+    0.25,
+    0.25,
+    0.25,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5,
+    0.5
+  ],
+  "cv_metrics": {
+    "binary_f1": 0.7096774193548387,
+    "multilabel_macro_f1_supported": 0.06349206349206349
+  },
+  "inference_mode": "production_ensemble_all_data_fit"
+}

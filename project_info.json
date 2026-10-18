@@ -1,0 +1,110 @@
+{
+  "project": "ForteBank Violation Detector",
+  "version": "1.0.0",
+  "description": "AI-сервис для выявления нарушений кассовой дисциплины по видеозаписям",
+
+  "team": "Team Alpha",
+  "datathon": "ForteBank Datathon 2026",
+
+  "api": {
+    "base_url": "TBD - будет после деплоя",
+    "endpoints": {
+      "analyze": "POST /api/v1/analyze",
+      "job_status": "GET /api/v1/jobs/{job_id}"
+    },
+    "authentication": {
+      "method": "X-API-Key header",
+      "key": "fortebank-datathon-2026-team-alpha"
+    }
+  },
+
+  "violation_types": {
+    "ракурс_спина": [
+      "завершения - Нарушение порядка завершения выдачи/принятия наличных",
+      "идентификация - Непроведение визуальной идентификации клиента",
+      "сортировка - Смешивание номиналов или средств разных клиентов",
+      "ранее - Оставление денег первого клиента на рабочем столе",
+      "посторонний - Допуск посторонних лиц в служебную зону"
+    ],
+    "ракурс_лицо": [
+      "оставление - Оставление рабочего места до окончания обслуживания",
+      "ценности - Оставление ценностей без надзора",
+      "сейф - Оставление сейфа незапертым",
+      "ключ - Оставление ключа в замке сейфа",
+      "штамп - Оставление штампов на рабочем столе",
+      "дверь - Нарушение запирания дверей кассы",
+      "личные - Личные вещи на рабочем месте",
+      "пища - Употребление еды/напитков",
+      "проверка - Не использует детектор проверки купюр"
+    ]
+  },
+
+  "technologies": {
+    "backend": {
+      "framework": "FastAPI",
+      "ai_model": "YOLOv8n (Ultralytics)",
+      "tracking": "ByteTrack",
+      "video_processing": "OpenCV",
+      "python_version": "3.10+"
+    },
+    "frontend": {
+      "framework": "HTML/CSS/JavaScript",
+      "ui": "Modern responsive design"
+    },
+    "deployment": {
+      "platform": "TBD",
+      "requirements": "Локальное выполнение, без облачных AI API"
+    }
+  },
+
+  "dataset": {
+    "total_videos": 42,
+    "format": ".mov",
+    "fps": "29+",
+    "violations_found": 30,
+    "no_violations": 12
+  },
+
+  "specifications": {
+    "response_format": {
+      "job_id": "string",
+      "status": "processing | done | failed",
+      "verdict": "violation | no_violation",
+      "violations": [
+        {
+          "type": "string",
+          "timecode_sec": "float",
+          "description": "string",
+          "evidence_frames": [
+            {
+              "timestamp_sec": "float",
+              "image_base64": "string (JPEG base64)"
+            }
+          ]
+        }
+      ]
+    },
+    "max_processing_time": "5 minutes",
+    "max_evidence_frames": 3
+  },
+
+  "regulatory_sources": [
+    "Постановление Правления НБРК № 231 (Кассовые операции)",
+    "Постановление Правления НБРК № 14 (Организация и охрана кассы)",
+    "adilet.zan.kz - Нормативные акты РК"
+  ],
+
+  "evaluation_criteria": {
+    "detection_quality": "25 баллов",
+    "localization_quality": "15 баллов",
+    "classification_quality": "15 баллов",
+    "regulatory_justification": "15 баллов",
+    "robustness": "10 баллов",
+    "product_readiness": "10 баллов",
+    "technical_solution": "10 баллов",
+    "total": "100 баллов"
+  },
+
+  "status": "В разработке",
+  "created": "2026-10-17"
+}
