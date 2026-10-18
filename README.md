@@ -1,74 +1,133 @@
-# ForteBank Violation Detector
+# ForteBank Violation Detector — jury handoff
 
-**Team:** AKTAI  
-**Event:** ForteBank Datathon 2026  
-**Deployment:** local-only Windows package
+## What this package is
 
-## Overview
+This is a local computer-vision service for reviewing cashier-operation videos. The operator uploads a `.mov` file and receives an asynchronous result containing a binary verdict, possible violation types, confidence, timecodes, explanations, normative references, and JPEG evidence frames.
 
-ForteBank Violation Detector is a local computer-vision service for reviewing cashier-operation videos. It accepts `.mov` files and returns a binary verdict, possible violation types, timestamps, descriptions, and JPEG evidence frames encoded as Base64.
+The service is an assistive review tool. It reports visual indicators for human verification and does not make a final legal or disciplinary determination.
 
-The production inference path combines temporal YOLOv8 analysis with the trained binary and multi-label feature models. All processing is local; video and frames are not sent to external AI services. The result is an explainable review aid for a human operator, not a final legal or disciplinary conclusion.
+## Submission values
 
-## Local submission values
-
-| Field | Value |
+| Field | Local value |
 |---|---|
-| Web interface URL | `file:///C:/Users/vanac/OneDrive/Desktop/FINAL_PROJECT/frontend/index.html` |
+| Web interface URL | `http://localhost:8080/frontend/index.html` |
 | API base URL | `http://localhost:8000/api/v1` |
 | API key for the jury | `fortebank-aktai-2026` |
 | Git Link | `Not available — local submission package` |
 
-`localhost` and the `file:///` URL are reachable only on the computer running this package. A public Web/API URL or Git repository must be supplied separately if the jury requires remote access.
+These addresses work on the computer running the service. A remote jury requires an approved reachable host; `localhost` is not accessible from another computer.
 
-## Requirements
+## Project structure
 
-Recommended local environment: Windows 10/11, Python 3.10+, an NVIDIA GPU with CUDA support, and sufficient disk space for the model weights and temporary video files. CPU execution is possible but substantially slower.
-
-## Run locally
-
-From the project root in PowerShell:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r backend\requirements.txt
-Remove-Item Env:FORTEBANK_BENCHMARK_GROUND_TRUTH -ErrorAction SilentlyContinue
-python backend\api.py
+```text
+AKTAI DT/
+├── backend/
+│   ├── api.py                 FastAPI service and asynchronous job flow
+│   ├── optimal_detector.py    YOLO temporal detector and evidence generator
+│   ├── ml_classifier.py       Neural/ensemble model loader and inference
+│   ├── violation_catalog.py   Jury-facing descriptions and references
+│   ├── requirements.txt       Runtime dependencies
+│   └── yolov8n.pt             YOLO weights
+├── frontend/
+│   └── index.html             Browser interface
+├── ml_pipeline/
+│   ├── feature_extractor.py  111-feature extraction
+│   ├── train_classifier.py    Binary + multi-label training
+│   ├── train_ensemble.py      Small-data ensemble training
+│   ├── features/              Extracted feature matrix
+│   └── models/                Production model artifacts
+├── data/
+│   ├── uploads/               Temporary uploaded videos; ignored by Git
+│   ├── results/               Temporary JSON results; ignored by Git
+│   └── evidence_frames/       Runtime evidence cache; ignored by Git
+├── docs/
+│   ├── FOR_JURY.md            Jury walkthrough
+│   ├── API_GUIDE.md           API contract
+│   ├── DEPLOYMENT.md          Local deployment notes
+│   └── TECHNICAL_DOCS.md      Architecture summary
+├── FINAL_SUBMISSION.md        Submission fields and handoff checklist
+└── README.md                  This document
 ```
 
-The API listens on `http://localhost:8000`. In a second PowerShell window, verify the service:
+## Start the service on Windows
+
+Use three PowerShell windows.
+
+### Window 1: API
+
+```powershell
+cd "C:\Users\vanac\OneDrive\Desktop\AKTAI DT"
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+.\.venv\Scripts\Activate.ps1
+Remove-Item Env:FORTEBANK_BENCHMARK_GROUND_TRUTH -ErrorAction SilentlyContinue
+py .\backend\api.py
+```
+
+Keep this window open. The expected startup state is:
+
+```text
+Detector ready | benchmark_mode=False | ml_classifier_loaded=True
+Uvicorn running on http://0.0.0.0:8000
+```
+
+### Window 2: readiness check
 
 ```powershell
 Invoke-RestMethod http://localhost:8000/health | Format-List
 ```
 
-The expected production state is `status=healthy`, `ml_classifier_loaded=True`, and `benchmark_mode=False`.
+Expected:
 
-## Web interface
-
-Open `frontend/index.html` after starting the API. If the browser blocks requests from a local file, serve the project folder with Python:
-
-```powershell
-python -m http.server 8080
+```text
+status               : healthy
+ml_classifier_loaded : True
+benchmark_mode       : False
 ```
 
-Then open `http://localhost:8080/frontend/index.html`.
+### Window 3: static frontend server
 
-## API usage
+```powershell
+cd "C:\Users\vanac\OneDrive\Desktop\AKTAI DT"
+py -m http.server 8080
+```
+
+Open:
+
+```text
+http://localhost:8080/frontend/index.html
+```
+
+Serving the frontend through `http.server` is preferred to opening the HTML directly with `file:///`, because it avoids browser restrictions around local requests.
+
+## Jury walkthrough through the Web interface
+
+Open the interface, choose a `.mov` file, and click the analysis button. The page displays a processing state while the API works asynchronously. When complete, it shows the verdict and one card per returned possible violation.
+
+Each card can contain the violation title, the type, timestamp, confidence, a detailed explanation, what to check in the video, a normative reference, a limitation note, and one or more evidence frames.
+
+For a local smoke test, use an annotated video such as:
+
+```text
+C:\Users\vanac\OneDrive\Desktop\datathon problem\open\videos\Х-30.mov
+```
+
+`Х-30` is useful because it contains multiple labeled types. Then use a negative example such as `Х-21.mov` and verify that the verdict is `no_violation`.
+
+## API walkthrough
 
 Upload a video:
 
 ```powershell
 $upload = curl.exe -s -X POST `
   -H "X-API-Key: fortebank-aktai-2026" `
-  -F "file=@C:\path\to\video.mov" `
+  -F "file=@C:\Users\vanac\OneDrive\Desktop\datathon problem\open\videos\Х-30.mov" `
   http://localhost:8000/api/v1/analyze | ConvertFrom-Json
 
 $jobId = $upload.job_id
+$upload | Format-List
 ```
 
-Poll until complete:
+Poll the job:
 
 ```powershell
 do {
@@ -76,52 +135,59 @@ do {
     $result = Invoke-RestMethod `
       -Uri "http://localhost:8000/api/v1/jobs/$jobId" `
       -Headers @{"X-API-Key"="fortebank-aktai-2026"}
+    Write-Host "Status: $($result.status)"
 } while ($result.status -eq "processing")
-
-$result | Select-Object job_id, status, verdict, ml_violation_probability, inference_mode | Format-List
 ```
 
-The public endpoints are `POST /api/v1/analyze` and `GET /api/v1/jobs/{job_id}`. The response contract contains `verdict` (`violation` or `no_violation`) and, when applicable, `violations` with `type`, `timecode_sec`, `description`, and `evidence_frames`.
-
-## Training pipeline
-
-The extracted feature matrix is already available at `ml_pipeline/features/extracted_features.csv`. To retrain both the benchmark and production models:
+Inspect the result without printing Base64 images:
 
 ```powershell
-cd ml_pipeline
+$result | Select-Object job_id, status, verdict, ml_violation_probability, inference_mode | Format-List
+
+$result.violations | Select-Object `
+  type,
+  title,
+  timecode_sec,
+  confidence,
+  rule_reference,
+  @{Name="frame_time"; Expression={$_.evidence_frames[0].timestamp_sec}},
+  @{Name="frame_count"; Expression={$_.evidence_frames.Count}} | Format-Table -AutoSize
+```
+
+For each returned card, `timecode_sec` and the first evidence-frame timestamp should match. When several violations exist, evidence is kept per type rather than shared across cards.
+
+## What the result means
+
+`violation` means that the service found one or more possible visual indicators. `no_violation` means that no configured visual detector or model signal passed the current decision path. Neither value replaces human review.
+
+Temporal detector evidence is preferred when available. A type-only ML prediction may receive an orienting candidate frame and is explicitly marked as requiring verification. A screenshot is not proof of an invisible fact such as a transaction record, authorization, or actual lock state.
+
+## Model and training artifacts
+
+The runtime loads the trained artifacts under `ml_pipeline/models/`. The current package includes the binary model, multi-label model, ensemble, scaler, class mapping, and metadata. The ensemble was calibrated using out-of-fold predictions and trained only on the labeled feature set.
+
+To retrain, do not use hidden jury videos. Use only the project training features and annotations:
+
+```powershell
+cd "C:\Users\vanac\OneDrive\Desktop\AKTAI DT\ml_pipeline"
 python train_classifier.py `
   --config config.yaml `
   --features "features/extracted_features.csv" `
-  --annotations "C:\Users\vanac\OneDrive\Desktop\datathon problem\detailed_annotations.csv" `
+  --annotations "C:\path\to\detailed_annotations.csv" `
   --mode both
+
+python train_ensemble.py `
+  --config config.yaml `
+  --features "features/extracted_features.csv" `
+  --annotations "C:\path\to\detailed_annotations.csv"
 ```
 
-`both` reports a holdout benchmark and an out-of-fold estimate, then fits the production model on all labeled examples using out-of-fold-calibrated thresholds. The out-of-fold estimate is the more honest indicator of generalization; neither metric guarantees performance on hidden jury videos.
+## Final verification checklist
 
-## Model artifacts
+Before the demonstration, confirm that the API is running, `/health` reports `ml_classifier_loaded=True`, benchmark mode is `False`, the frontend can upload a `.mov`, a job reaches `done`, and the response contains verdict, type, timestamp, description, and evidence frames. Keep the benchmark environment variable unset.
 
-`ml_pipeline/models/` contains `binary_model.pth`, `multilabel_model.pth`, `best_model.pth` (legacy alias), `scaler.pkl`, `multilabel_binarizer.pkl`, `label_encoder.pkl`, and `model_metadata.json`.
+The local Git repository is clean after the latest commit. Runtime uploads, result JSON files, evidence caches, Python caches, and local environments are intentionally excluded from the repository.
 
-## Verification checklist
+## Known limitations
 
-Run syntax checks before submission:
-
-```powershell
-python -m py_compile backend\api.py backend\ml_classifier.py ml_pipeline\feature_extractor.py ml_pipeline\train_classifier.py
-Invoke-RestMethod http://localhost:8000/health | Format-List
-```
-
-For a smoke test, use a known labeled video such as `Х-30.mov` and verify that the response contains a completed verdict, both expected types where applicable, timestamps, and at least one evidence frame per returned type.
-
-## Scope and limitations
-
-The labeled dataset contains 42 videos and several rare violation classes. The system therefore reports possible violations for human review and does not claim guaranteed 100% accuracy on unseen footage. Ground-truth lookup is disabled by default in the jury path. It can only be enabled explicitly for a local benchmark with `FORTEBANK_BENCHMARK_GROUND_TRUTH=1`; that mode must not be used for jury scoring.
-
-## Documentation
-
-- `FINAL_SUBMISSION.md` — values and handoff checklist for the jury.
-- `docs/FOR_JURY.md` — local demonstration instructions.
-- `docs/API_GUIDE.md` — API contract and examples.
-- `docs/TECHNICAL_DOCS.md` — architecture and limitations.
-- `docs/DEPLOYMENT.md` — local deployment notes.
-- `ml_pipeline/README.md` — training and model artifacts.
+The labeled dataset is small and has rare violation classes. Performance on hidden footage cannot be guaranteed from the known-video benchmark. Some visual types require human verification because the camera may not show the relevant detail. The normative references in the UI were taken from the supplied project materials and should be checked against the current official edition before being presented as a legal conclusion.
