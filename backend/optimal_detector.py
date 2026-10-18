@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Оптимальный гибридный детектор с балансом FP/FN.
-Использует Ground Truth для калибровки порогов.
+Временной (temporal) детектор на базе YOLOv8n с балансом FP/FN.
+Пороги подобраны вручную на обучающем датасете; разметка во время работы не используется.
 """
 import cv2
 import numpy as np
@@ -18,20 +18,14 @@ class OptimalViolationDetector:
     Гибридный детектор с оптимальными порогами:
     - Temporal analysis (как в Advanced)
     - Умеренные пороги (золотая середина)
-    - Калибровка на Ground Truth
     """
 
-    def __init__(self, ground_truth_file: Optional[str] = None):
+    def __init__(self):
         """Инициализация детектора"""
         # YOLO модель
         self.model = None
         self.model_loaded = False
         self._init_yolo()
-
-        # Ground Truth для калибровки
-        self.ground_truth = None
-        if ground_truth_file:
-            self.ground_truth = self._load_ground_truth(ground_truth_file)
 
         # Параметры детекции
         self.min_confidence = 0.35  # Средний порог
@@ -65,39 +59,11 @@ class OptimalViolationDetector:
         """Инициализация YOLO модели"""
         try:
             from ultralytics import YOLO
-            self.model = YOLO('yolov8n.pt')
+            self.model = YOLO(str(Path(__file__).resolve().parent / 'yolov8n.pt'))
             self.model_loaded = True
             print("✅ YOLO model loaded")
         except Exception as e:
             print(f"⚠️ YOLO not loaded: {e}")
-
-    def _load_ground_truth(self, labels_file: str) -> dict:
-        """Загрузка Ground Truth для калибровки"""
-        try:
-            df = pd.read_excel(labels_file)
-            ground_truth = {}
-
-            for _, row in df.iterrows():
-                video_name = str(row['наименование файла']).strip()
-                has_violation = str(row['нарушение / без нарушения']).strip().lower()
-                violation_type = row.get('тип нарушения', '')
-
-                if video_name not in ground_truth:
-                    ground_truth[video_name] = {
-                        'has_violation': has_violation == 'нарушение',
-                        'violations': []
-                    }
-
-                if has_violation == 'нарушение' and pd.notna(violation_type):
-                    ground_truth[video_name]['violations'].append({
-                        'type': str(violation_type).strip()
-                    })
-
-            print(f"✅ Ground Truth loaded: {len(ground_truth)} videos")
-            return ground_truth
-        except Exception as e:
-            print(f"⚠️ Could not load Ground Truth: {e}")
-            return None
 
     def _init_violations_db(self) -> Dict:
         """База нарушений"""
@@ -146,13 +112,6 @@ class OptimalViolationDetector:
         if not self.model_loaded:
             return {"verdict": "no_violation", "violations": []}
 
-        # Проверяем, есть ли это видео в Ground Truth
-        video_name = Path(video_path).stem
-        gt_info = None
-        if self.ground_truth and video_name in self.ground_truth:
-            gt_info = self.ground_truth[video_name]
-            print(f"   📋 Ground Truth available: {gt_info['has_violation']}")
-
         # Извлечение кадров
         frames_data = self._extract_frames(video_path)
         if not frames_data:
@@ -171,8 +130,7 @@ class OptimalViolationDetector:
             detections_timeline,
             frames_data,
             job_id,
-            evidence_dir,
-            gt_info
+            evidence_dir
         )
 
         # Группировка
@@ -273,15 +231,10 @@ class OptimalViolationDetector:
         detections: List[Dict],
         frames: List[Dict],
         job_id: str,
-        evidence_dir: Path,
-        gt_info: Optional[Dict] = None
+        evidence_dir: Path
     ) -> List[Dict]:
-        """Temporal analysis с учетом Ground Truth"""
+        """Temporal analysis"""
         violations = []
-
-        # Если есть Ground Truth и там НЕТ нарушений - возвращаем пустой список
-        if gt_info and not gt_info['has_violation']:
-            return []
 
         # 1. Оставление (absence)
         absence_violations = self._detect_absence(detections, frames, job_id, evidence_dir)
@@ -298,18 +251,6 @@ class OptimalViolationDetector:
         # 4. Еда
         food_violations = self._detect_food(detections, frames, job_id, evidence_dir)
         violations.extend(food_violations)
-
-        # Если есть GT и там ЕСТЬ нарушения, но мы ничего не нашли - добавляем "общее" нарушение
-        if gt_info and gt_info['has_violation'] and len(violations) == 0:
-            # Используем средний кадр
-            mid_idx = len(frames) // 2
-            violations.append(self._create_violation(
-                gt_info['violations'][0]['type'] if gt_info['violations'] else 'сортировка',
-                frames[mid_idx]['timestamp'],
-                frames[mid_idx],
-                job_id,
-                evidence_dir
-            ))
 
         return violations
 

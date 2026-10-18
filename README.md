@@ -1,193 +1,175 @@
-# ForteBank Violation Detector — jury handoff
+# AKTAI — выявление нарушений кассовой дисциплины по видео (ForteBank, Datathon 26)
 
-## What this package is
+Сервис принимает видеозапись работы кассира (`.mov`) и сообщает, видны ли на ней признаки возможных нарушений. Для каждого нарушения он показывает тип, таймкод, описание того, что видно, кадр-доказательство и ссылку на норму (документ и пункт).
 
-This is a local computer-vision service for reviewing cashier-operation videos. The operator uploads a `.mov` file and receives an asynchronous result containing a binary verdict, possible violation types, confidence, timecodes, explanations, normative references, and JPEG evidence frames.
+Все модели выполняются локально, внутри сервиса. Облачные AI-сервисы и API не используются. Результат — подсказка для проверки человеком, а не юридическое или дисциплинарное заключение. Лица не распознаются и не идентифицируются, звук не используется.
 
-The service is an assistive review tool. It reports visual indicators for human verification and does not make a final legal or disciplinary determination.
+## Адреса для жюри
 
-## Submission values
-
-| Field | Local value |
+| | |
 |---|---|
-| Web interface URL | `http://localhost:8080/frontend/index.html` |
-| API base URL | `http://localhost:8000/api/v1` |
-| API key for the jury | `fortebank-aktai-2026` |
-| Git Link | `https://github.com/Relionas/AKTAI-DT` |
+| Веб-интерфейс | `https://vii-before-pamela-publisher.trycloudflare.com/` |
+| API | `https://vii-before-pamela-publisher.trycloudflare.com/api/v1` |
+| API-ключ | передан жюри в форме сдачи (в репозитории не хранится) |
 
-These addresses work on the computer running the service. A remote jury requires an approved reachable host; `localhost` is not accessible from another computer.
+Интерфейс и API работают по одному адресу.
 
-## Project structure
+## Как пользоваться
 
-```text
-AKTAI DT/
-├── backend/
-│   ├── api.py                 FastAPI service and asynchronous job flow
-│   ├── optimal_detector.py    YOLO temporal detector and evidence generator
-│   ├── ml_classifier.py       Neural/ensemble model loader and inference
-│   ├── violation_catalog.py   Jury-facing descriptions and references
-│   ├── requirements.txt       Runtime dependencies
-│   └── yolov8n.pt             YOLO weights
-├── frontend/
-│   └── index.html             Browser interface
-├── ml_pipeline/
-│   ├── feature_extractor.py  111-feature extraction
-│   ├── train_classifier.py    Binary + multi-label training
-│   ├── train_ensemble.py      Small-data ensemble training
-│   ├── features/              Extracted feature matrix
-│   └── models/                Production model artifacts
-├── data/
-│   ├── uploads/               Temporary uploaded videos; ignored by Git
-│   ├── results/               Temporary JSON results; ignored by Git
-│   └── evidence_frames/       Runtime evidence cache; ignored by Git
-├── docs/
-│   ├── FOR_JURY.md            Jury walkthrough
-│   ├── API_GUIDE.md           API contract
-│   ├── DEPLOYMENT.md          Local deployment notes
-│   └── TECHNICAL_DOCS.md      Architecture summary
-├── FINAL_SUBMISSION.md        Submission fields and handoff checklist
-└── README.md                  This document
+**Интерфейс.** Откройте адрес, перетащите `.mov`-файл, нажмите «Анализировать». Пока видео обрабатывается, на странице показан статус. Затем появляется вердикт («Нарушение не обнаружено» или «Обнаружены признаки возможных нарушений») и по карточке на каждое нарушение: тип, таймкод, описание, кадр, норма и ограничения видео.
+
+**API** (раздел 10 ТЗ). Обработка асинхронная, в два шага:
+
+```bash
+# 1. Загрузить видео -> {"job_id": "3f2a9c1e", "status": "processing"}
+curl -X POST https://<ПУБЛИЧНЫЙ-АДРЕС>/api/v1/analyze -H "X-API-Key: <ключ>" -F "file=@video_017.mov"
+
+# 2. Опрашивать статус до done / failed
+curl https://<ПУБЛИЧНЫЙ-АДРЕС>/api/v1/jobs/3f2a9c1e -H "X-API-Key: <ключ>"
 ```
 
-## Start the service on Windows
+Запросы без верного ключа получают `401`, файлы не в `.mov` — `400`, неизвестный `job_id` — `404`. Готовый результат:
 
-Use three PowerShell windows.
+```json
+{
+  "job_id": "3f2a9c1e",
+  "status": "done",
+  "verdict": "violation",
+  "violations": [
+    {
+      "type": "Кассир покинул рабочее место до окончания обслуживания",
+      "timecode_sec": 12.3,
+      "description": "12.3 с: кассир не обнаруживается на рабочем месте не менее 5 секунд подряд. Почему это может быть нарушением: кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента (Правила № 231, глава 2, п. 22). Проверьте: идёт ли в этот момент обслуживание клиента.",
+      "evidence_frames": [{ "timestamp_sec": 12.3, "image_base64": "/9j/4AAQ..." }],
+      "rule_reference": "Правила осуществления кассовых операций … утв. постановлением Правления НБРК от 29.11.2019 № 231, глава 2, п. 22",
+      "rule_source_url": "https://adilet.zan.kz/rus/docs/V1900019680",
+      "confidence": 0.8,
+      "evidence_source": "temporal_detector"
+    }
+  ]
+}
+```
 
-### Window 1: API
+Поля `type`, `timecode_sec`, `description` и `evidence_frames` — по схеме ТЗ. Остальные поля дополнительные:
+
+- `rule_reference` — документ и пункт;
+- `rule_source_url` — ссылка на adilet;
+- `type_code` — короткий внутренний код типа;
+- `confidence` — уверенность модели;
+- `evidence_source` — откуда момент: `temporal_detector` (точный) или `type_candidate_localizer` (ориентировочный);
+- `visual_limit` — чего не видно на камере.
+
+## Архитектура и модели
+
+```
+.mov ─┬─> временной детектор: YOLOv8n по кадрам (2 к/с) + правила по времени ──> события с таймкодом и кадром
+      │
+      └─> извлечение 111 признаков (YOLOv8n + EfficientNet-B4, 5 к/с)
+              └─> бинарная модель «есть нарушение?» + мультиметочная модель «какие типы?»
+                  (ансамбль RandomForest + LogisticRegression; MLP на PyTorch — запасной вариант)
+                                   │
+                    объединение: вердикт и типы — от модели, таймкод и кадр — от детектора,
+                    если он нашёл тот же тип; иначе кадр ориентировочный и это явно сказано
+                                   │
+                    каталог правил: название типа, описание, норма (документ, пункт)
+```
+
+- Backend — FastAPI (`backend/api.py`), одновременно отдаёт интерфейс (`frontend/index.html`).
+- Видео обрабатываются в фоне. Число одновременно обрабатываемых задаётся `MAX_PARALLEL_JOBS` (по умолчанию 1: YOLO не потокобезопасен). Результаты сохраняются в `data/results/` и доступны после перезапуска.
+- Обучение — `ml_pipeline/` (признаки `features/extracted_features.csv`, модели `models/`). Разметка во время работы сервиса не используется.
+- Локальность: веса YOLOv8n лежат в репозитории. Веса EfficientNet-B4 скачиваются один раз (`timm`) и кэшируются. После этого сервис работает без интернета (`HF_HUB_OFFLINE=1`). В Docker веса скачиваются на этапе сборки.
+
+## Типы нарушений
+
+| Код | Тип (поле `type`) | Как обнаруживается | Норма |
+|---|---|---|---|
+| `оставление` | Кассир покинул рабочее место до окончания обслуживания | детектор: кассира нет на месте ≥ 5 с; модель | Правила № 231, гл. 2, п. 22 |
+| `посторонний` | Постороннее лицо в кассовой зоне | детектор: ≥ 2 человек в зоне ≥ 2 с; модель | Правила № 14; по аналогии Правила № 231, п. 75 |
+| `личные` | Личные вещи на рабочем месте | детектор: сумка / рюкзак / телефон ≥ 3 с; модель | Правила № 231, гл. 2, п. 12 |
+| `пища` | Еда или напитки на рабочем месте | детектор: чашка / бутылка / посуда ≥ 3 с; модель | Правила № 231, гл. 2, п. 12 (как личные вещи) |
+| `ранее` | Ранее принятые деньги оставлены на столе | модель | Правила № 231, гл. 2, п. 20 |
+| `ценности` | Ценности оставлены без присмотра | модель | Правила № 231, гл. 2, пп. 20, 22 |
+| `сортировка` | Нарушение сортировки или смешивание наличных | модель | Правила № 231, п. 43; гл. 2, п. 20 |
+| `завершения` | Операция с наличными завершена не у кассы | модель | Правила № 231, гл. 2, п. 35 |
+| `идентификация` | Нет визуальной идентификации клиента | модель | Правила № 231, гл. 2, п. 19 |
+| `проверка` | Не используется детектор подлинности банкнот | модель | Правила № 231, гл. 2, п. 9; п. 41 |
+| `сейф` | Сейф или хранилище оставлены открытыми | модель | Правила № 231, гл. 2, п. 20; п. 77 |
+| `ключ` | Ключ оставлен в замке сейфа | модель | Правила № 231, пп. 76, 80 |
+| `штамп` | Штамп оставлен вне места хранения | модель | Правила № 231, п. 80 |
+| `дверь` | Дверь кассового узла не закрыта | модель | Правила № 14 |
+
+Полные формулировки, что проверять и ограничения по каждому типу — в `backend/violation_catalog.py`.
+
+## Нормативные источники и принцип сопоставления
+
+1. **Правила № 231.** Правила осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в банках второго уровня, филиалах банков-нерезидентов РК, Национальном операторе почты и юридических лицах, исключительной деятельностью которых является инкассация. Утверждены постановлением Правления НБРК от 29.11.2019 № 231, зарегистрированы в Минюсте 03.12.2019 № 19680 — <https://adilet.zan.kz/rus/docs/V1900019680>. Использованные пункты:
+   - п. 9 — оборудование для проверки подлинности банкнот;
+   - п. 12 — личные вещи хранятся вне кассового узла;
+   - п. 19 — визуальная идентификация клиента по документу;
+   - п. 20 — ранее принятые деньги хранятся в закрывающихся устройствах;
+   - п. 22 — не покидать рабочее место до окончания обслуживания;
+   - п. 35 — клиент пересчитывает деньги, не отходя от кассы;
+   - п. 41 — проверка защитных признаков оборудованием;
+   - п. 43 — сортировка по номиналам и износу;
+   - пп. 75–77 — доступ в кладовую и сейфовую комнату, хранение ключей, хранение наличных в сейфах;
+   - п. 80 — порядок хранения печатей и ключей задают внутренние документы банка.
+2. **Правила № 14.** Правила организации охраны и устройства помещений банков второго уровня… Утверждены постановлением Правления НБРК от 24.02.2020 № 14. Это требования к охране и устройству кассового узла; используются для типов `посторонний` и `дверь`.
+
+Принцип: каждому типу соответствует наблюдаемое действие или состояние, которое видно на камере. Правило берётся только из пункта, который прямо требует обратного. Если вывод зависит от невидимых данных — проводки, сверки, полномочий человека, фактического запирания замка, — сервис не утверждает нарушение, а пишет, что проверить, и указывает ограничение видео (`visual_limit`).
+
+## Ограничения и известные ошибки
+
+- Обучающий датасет — 42 видео, часть типов встречается лишь в единичных роликах. Оценка на кросс-валидации: бинарный F1 ≈ 0,71, macro-F1 по типам ≈ 0,06. Определение наличия нарушения заметно надёжнее, чем определение типа.
+- Временной детектор точно локализует только 4 типа: `оставление`, `посторонний`, `личные`, `пища`. Остальные типы даёт модель по признакам всего ролика. Для них таймкод и кадр ориентировочные, и это явно написано в описании.
+- Вердикт определяет модель. Если она отвечает `no_violation`, находки детектора в ответ не попадают. Это сделано, чтобы уменьшить ложные срабатывания.
+- Типичные ошибки:
+  - кассир вне кадра или за перекрытием — ложное «оставление»;
+  - инкассатор или второй сотрудник — ложный «посторонний»;
+  - рабочие предметы, похожие на телефон или чашку, — ложные «личные» и «пища»;
+  - мелкие объекты (ключ, штамп) при верхнем ракурсе не различаются.
+- На видео с другим углом камеры качество может снижаться: модель обучена только на ракурсах из обучающего датасета.
+
+## Запуск
+
+Нужен Python 3.11 или 3.12: модели сохранены scikit-learn 1.9.1.
 
 ```powershell
-cd "C:\Users\vanac\OneDrive\Desktop\AKTAI DT"
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-Remove-Item Env:FORTEBANK_BENCHMARK_GROUND_TRUTH -ErrorAction SilentlyContinue
-py .\backend\api.py
+pip install -r backend\requirements.txt
+copy .env.example .env      # затем впишите свой API_KEY в .env
+python backend\api.py       # или .\scripts\start.ps1
 ```
 
-Keep this window open. The expected startup state is:
+Интерфейс откроется на <http://localhost:8000/>, проверка готовности — <http://localhost:8000/health>.
 
-```text
-Detector ready | benchmark_mode=False | ml_classifier_loaded=True
-Uvicorn running on http://0.0.0.0:8000
+Docker: `cp .env.example .env`, затем впишите ключ и запустите `docker compose up --build`.
+
+Проверка API так, как это делает жюри (несколько видео одновременно, проверка схемы и лимита в 5 минут):
+
+```bash
+python scripts/check_api.py --url https://<ПУБЛИЧНЫЙ-АДРЕС> --key <ключ> video1.mov video2.mov
 ```
 
-### Window 2: readiness check
+Переобучение — только на обучающих данных:
 
-```powershell
-Invoke-RestMethod http://localhost:8000/health | Format-List
+```bash
+cd ml_pipeline
+python train_classifier.py --config config.yaml --features features/extracted_features.csv --annotations <разметка.csv> --mode both
+python train_ensemble.py   --config config.yaml --features features/extracted_features.csv --annotations <разметка.csv>
 ```
 
-Expected:
+## Используемые открытые компоненты
 
-```text
-status               : healthy
-ml_classifier_loaded : True
-benchmark_mode       : False
+FastAPI, OpenCV, PyTorch, scikit-learn, timm (EfficientNet-B4, Apache-2.0), Ultralytics YOLOv8n (AGPL-3.0). Для коммерческого внедрения в банке YOLOv8 потребуется либо открыть код сервиса по AGPL, либо купить корпоративную лицензию Ultralytics, либо заменить детектор моделью с разрешительной лицензией.
+
+## Структура
+
 ```
-
-### Window 3: static frontend server
-
-```powershell
-cd "C:\Users\vanac\OneDrive\Desktop\AKTAI DT"
-py -m http.server 8080
+backend/      api.py — API и отдача интерфейса; optimal_detector.py — временной детектор;
+              ml_classifier.py — модели; violation_catalog.py — типы, описания, нормы
+frontend/     index.html — интерфейс
+ml_pipeline/  извлечение признаков, обучение, обученные модели (models/)
+scripts/      check_api.py — проверка API; start.ps1 — запуск на Windows
+data/         загрузки, результаты, кадры (в Git не попадают)
 ```
-
-Open:
-
-```text
-http://localhost:8080/frontend/index.html
-```
-
-Serving the frontend through `http.server` is preferred to opening the HTML directly with `file:///`, because it avoids browser restrictions around local requests.
-
-## Jury walkthrough through the Web interface
-
-Open the interface, choose a `.mov` file, and click the analysis button. The page displays a processing state while the API works asynchronously. When complete, it shows the verdict and one card per returned possible violation.
-
-Each card can contain the violation title, the type, timestamp, confidence, a detailed explanation, what to check in the video, a normative reference, a limitation note, and one or more evidence frames.
-
-For a local smoke test, use an annotated video such as:
-
-```text
-C:\Users\vanac\OneDrive\Desktop\datathon problem\open\videos\Х-30.mov
-```
-
-`Х-30` is useful because it contains multiple labeled types. Then use a negative example such as `Х-21.mov` and verify that the verdict is `no_violation`.
-
-## API walkthrough
-
-Upload a video:
-
-```powershell
-$upload = curl.exe -s -X POST `
-  -H "X-API-Key: fortebank-aktai-2026" `
-  -F "file=@C:\Users\vanac\OneDrive\Desktop\datathon problem\open\videos\Х-30.mov" `
-  http://localhost:8000/api/v1/analyze | ConvertFrom-Json
-
-$jobId = $upload.job_id
-$upload | Format-List
-```
-
-Poll the job:
-
-```powershell
-do {
-    Start-Sleep -Seconds 10
-    $result = Invoke-RestMethod `
-      -Uri "http://localhost:8000/api/v1/jobs/$jobId" `
-      -Headers @{"X-API-Key"="fortebank-aktai-2026"}
-    Write-Host "Status: $($result.status)"
-} while ($result.status -eq "processing")
-```
-
-Inspect the result without printing Base64 images:
-
-```powershell
-$result | Select-Object job_id, status, verdict, ml_violation_probability, inference_mode | Format-List
-
-$result.violations | Select-Object `
-  type,
-  title,
-  timecode_sec,
-  confidence,
-  rule_reference,
-  @{Name="frame_time"; Expression={$_.evidence_frames[0].timestamp_sec}},
-  @{Name="frame_count"; Expression={$_.evidence_frames.Count}} | Format-Table -AutoSize
-```
-
-For each returned card, `timecode_sec` and the first evidence-frame timestamp should match. When several violations exist, evidence is kept per type rather than shared across cards.
-
-## What the result means
-
-`violation` means that the service found one or more possible visual indicators. `no_violation` means that no configured visual detector or model signal passed the current decision path. Neither value replaces human review.
-
-Temporal detector evidence is preferred when available. A type-only ML prediction may receive an orienting candidate frame and is explicitly marked as requiring verification. A screenshot is not proof of an invisible fact such as a transaction record, authorization, or actual lock state.
-
-## Model and training artifacts
-
-The runtime loads the trained artifacts under `ml_pipeline/models/`. The current package includes the binary model, multi-label model, ensemble, scaler, class mapping, and metadata. The ensemble was calibrated using out-of-fold predictions and trained only on the labeled feature set.
-
-To retrain, do not use hidden jury videos. Use only the project training features and annotations:
-
-```powershell
-cd "C:\Users\vanac\OneDrive\Desktop\AKTAI DT\ml_pipeline"
-python train_classifier.py `
-  --config config.yaml `
-  --features "features/extracted_features.csv" `
-  --annotations "C:\path\to\detailed_annotations.csv" `
-  --mode both
-
-python train_ensemble.py `
-  --config config.yaml `
-  --features "features/extracted_features.csv" `
-  --annotations "C:\path\to\detailed_annotations.csv"
-```
-
-## Final verification checklist
-
-Before the demonstration, confirm that the API is running, `/health` reports `ml_classifier_loaded=True`, benchmark mode is `False`, the frontend can upload a `.mov`, a job reaches `done`, and the response contains verdict, type, timestamp, description, and evidence frames. Keep the benchmark environment variable unset.
-
-The local Git repository is clean after the latest commit. Runtime uploads, result JSON files, evidence caches, Python caches, and local environments are intentionally excluded from the repository.
-
-## Known limitations
-
-The labeled dataset is small and has rare violation classes. Performance on hidden footage cannot be guaranteed from the known-video benchmark. Some visual types require human verification because the camera may not show the relevant detail. The normative references in the UI were taken from the supplied project materials and should be checked against the current official edition before being presented as a legal conclusion.

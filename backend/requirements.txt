@@ -1,3 +1,4 @@
+# Python 3.11 или 3.12 (scikit-learn 1.9.1, которым сохранены модели, требует Python >= 3.11)
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
@@ -12,3 +13,8 @@ pydantic==2.9.0
 python-dotenv==1.0.1
 pandas>=2.0.0
 openpyxl>=3.1.0
+# Модели в ml_pipeline/models/*.pkl сохранены scikit-learn 1.9.1 — версия должна совпадать
+scikit-learn==1.9.1
+scipy>=1.10.0
+tqdm>=4.65.0
+requests>=2.31.0

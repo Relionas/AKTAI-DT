@@ -25,7 +25,7 @@ class AdvancedFeatureExtractor:
 
         # YOLOv8 for object detection
         print("📦 Loading YOLOv8...")
-        self.yolo = YOLO('yolov8n.pt')
+        self.yolo = YOLO(str(Path(__file__).resolve().parent / 'yolov8n.pt'))
 
         # EfficientNet for visual features
         print("🎨 Loading EfficientNet-B4...")

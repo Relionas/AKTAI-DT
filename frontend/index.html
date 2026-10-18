@@ -325,8 +325,10 @@
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8000';
-        const API_KEY = 'fortebank-aktai-2026';
+        // Страницу отдаёт тот же сервер, что и API, поэтому адрес API = адрес страницы.
+        // Ключ подставляет сервер при отдаче страницы (в репозитории его нет).
+        const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:8000' : window.location.origin;
+        const API_KEY = '__API_KEY__';
 
         let selectedFile = null;
         let currentJobId = null;
