@@ -1,4 +1,3 @@
-from __future__ import annotations
 import asyncio,base64,json,os,sys,uuid
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +15,7 @@ from violation_catalog import enrich_result
 app=FastAPI(title='ForteBank Violation Detector API',version='2.1.0'); app.add_middleware(CORSMiddleware,allow_origins=['*'],allow_credentials=True,allow_methods=['*'],allow_headers=['*'])
 UPLOAD_DIR=BASE_DIR/'data'/'uploads'; RESULTS_DIR=BASE_DIR/'data'/'results'; EVIDENCE_DIR=BASE_DIR/'data'/'evidence_frames'; MODELS_DIR=ML_PIPELINE_DIR/'models'; GROUND_TRUTH_FILE=BASE_DIR.parent/'open'/'open_labels.xlsx'
 for d in (UPLOAD_DIR,RESULTS_DIR,EVIDENCE_DIR): d.mkdir(parents=True,exist_ok=True)
-VALID_API_KEY='fortebank-aktai-2026'; benchmark_mode=os.getenv('FORTEBANK_BENCHMARK_GROUND_TRUTH','0')=='1'; detector=OptimalViolationDetector(ground_truth_file=str(GROUND_TRUTH_FILE) if benchmark_mode and GROUND_TRUTH_FILE.exists() else None); ml_classifier=load_if_available(MODELS_DIR); jobs={}
+VALID_API_KEY='fortebank-aktai-2026'; ML_ONLY_MIN_CONFIDENCE=0.55; benchmark_mode=os.getenv('FORTEBANK_BENCHMARK_GROUND_TRUTH','0')=='1'; detector=OptimalViolationDetector(ground_truth_file=str(GROUND_TRUTH_FILE) if benchmark_mode and GROUND_TRUTH_FILE.exists() else None); ml_classifier=load_if_available(MODELS_DIR); jobs={}
 print(f'✅ Detector ready | benchmark_mode={benchmark_mode} | ml_classifier_loaded={ml_classifier is not None}')
 def verify_api_key(x_api_key:Optional[str]=Header(None)):
  if x_api_key!=VALID_API_KEY: raise HTTPException(status_code=401,detail='Invalid or missing X-API-Key')
@@ -38,12 +37,15 @@ def _candidate(path,typ):
  cap=cv2.VideoCapture(path); fps=cap.get(cv2.CAP_PROP_FPS) or 1.; n=int(cap.get(cv2.CAP_PROP_FRAME_COUNT)); duration=n/fps if n else 0.; cap.release(); t=duration*(.94 if typ=='сортировка' else .72); return round(t,1),_frame_at(path,t)
 def _merge(result,ml,path):
  if not ml:return enrich_result(result)
- evidence={v.get('type'):v for v in result.get('violations',[])}; merged=[]
+ evidence={v.get('type'):v for v in result.get('violations',[])}; merged=[]; suppressed=[]
  for item in ml.get('violations',[]):
-  typ=item['type']
-  if typ in evidence: merged.append(_sync(path,{**evidence[typ],'confidence':item.get('confidence')})); continue
-  t,img=_candidate(path,typ); merged.append({'type':typ,'evidence_type':typ,'evidence_source':'type_candidate_localizer','confidence':item.get('confidence'),'timecode_sec':t,'description':'Модель обнаружила возможный тип нарушения; кадр является ориентировочным и требует проверки оператором.','evidence_frames':[{'timestamp_sec':t,'image_base64':img}] if img else []})
- return enrich_result({**result,'verdict':ml.get('verdict',result.get('verdict','no_violation')),'violations':merged,'ml_violation_probability':ml.get('violation_probability'),'inference_mode':'benchmark_ground_truth' if benchmark_mode else 'production_ml_temporal'})
+  typ=item['type']; confidence=float(item.get('confidence') or 0)
+  if typ in evidence: merged.append(_sync(path,{**evidence[typ],'confidence':confidence})); continue
+  if confidence<ML_ONLY_MIN_CONFIDENCE: suppressed.append({'type':typ,'confidence':round(confidence,4),'reason':'ML-only type below evidence confidence gate'}); continue
+  t,img=_candidate(path,typ); merged.append({'type':typ,'evidence_type':typ,'evidence_source':'type_candidate_localizer','confidence':confidence,'timecode_sec':t,'description':'Модель обнаружила возможный тип нарушения; кадр является ориентировочным и требует проверки оператором.','evidence_frames':[{'timestamp_sec':t,'image_base64':img}] if img else []})
+ result=enrich_result({**result,'verdict':ml.get('verdict',result.get('verdict','no_violation')),'violations':merged,'ml_violation_probability':ml.get('violation_probability'),'inference_mode':'benchmark_ground_truth' if benchmark_mode else 'production_ml_temporal'})
+ if suppressed: result['suppressed_predictions']=suppressed
+ return result
 @app.get('/')
 async def root():return {'service':'ForteBank Violation Detector API','version':'2.1.0','status':'running','ml_classifier_loaded':ml_classifier is not None,'benchmark_mode':benchmark_mode}
 @app.get('/health')
@@ -65,7 +67,7 @@ async def get_job_status(jid:str,api_key:str=Depends(verify_api_key)):
  if jid not in jobs:raise HTTPException(status_code=404,detail='Job not found')
  job=jobs[jid]; response={'job_id':jid,'status':job['status']}
  if job['status']=='done':
-  result=job.get('result',{}); response.update({'verdict':result.get('verdict','no_violation'),'violations':result.get('violations',[])}); response.update({k:result[k] for k in ('inference_mode','ml_violation_probability') if k in result})
+  result=job.get('result',{}); response.update({'verdict':result.get('verdict','no_violation'),'violations':result.get('violations',[])}); response.update({k:result[k] for k in ('inference_mode','ml_violation_probability','suppressed_predictions') if k in result})
  elif job['status']=='failed':response['error']=job.get('error','Unknown error')
  return response
 if __name__=='__main__':uvicorn.run(app,host='0.0.0.0',port=8000)
