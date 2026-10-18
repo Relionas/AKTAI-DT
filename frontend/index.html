@@ -438,9 +438,13 @@
                     <div class="evidence-frame"><img src="data:image/jpeg;base64,${frame.image_base64}" alt="Кадр-доказательство"></div>
                 `).join('');
                 card.innerHTML = `
-                    <div class="violation-type">${escapeHtml(violation.type)}</div>
+                    <div class="violation-type">${escapeHtml(violation.title || violation.type)}</div>
                     <div class="timecode">${violation.timecode_sec == null ? 'Таймкод уточняется' : `Таймкод: ${escapeHtml(violation.timecode_sec)} с`}</div>
-                    <p style="color: var(--text-dim); margin-top: var(--space-sm);">${escapeHtml(violation.description)}</p>
+                    <p style="color: var(--text); margin-top: var(--space-sm);">${escapeHtml(violation.description)}</p>
+                    ${violation.details ? `<p style="color: var(--text-dim); margin-top: var(--space-sm);"><strong>Что проверять:</strong> ${escapeHtml(violation.details)}</p>` : ''}
+                    ${violation.rule_reference ? `<p style="color: var(--accent); margin-top: var(--space-sm);"><strong>Нормативный источник:</strong> ${escapeHtml(violation.rule_reference)}</p>` : ''}
+                    ${violation.visual_limit ? `<p style="color: var(--warning); margin-top: var(--space-sm);"><strong>Ограничение видео:</strong> ${escapeHtml(violation.visual_limit)}</p>` : ''}
+                    ${violation.normative_note ? `<p style="color: var(--text-dim); margin-top: var(--space-sm); font-size: .85rem;">${escapeHtml(violation.normative_note)}</p>` : ''}
                     ${violation.confidence == null ? '' : `<p style="color: var(--text-dim); margin-top: var(--space-sm);">Уверенность модели: ${Math.round(Number(violation.confidence) * 100)}%</p>`}
                     ${framesHtml ? `<div class="evidence-frames">${framesHtml}</div>` : '<p style="color: var(--text-dim); margin-top: var(--space-md);">Кадр-доказательство недоступен; требуется проверка оператором.</p>'}
                 `;

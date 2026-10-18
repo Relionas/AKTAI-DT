@@ -25,6 +25,7 @@ if str(ML_PIPELINE_DIR) not in sys.path:
 from ml_classifier import load_if_available
 from feature_extractor import extract_features_for_inference
 from optimal_detector import OptimalViolationDetector
+from violation_catalog import enrich_result
 
 app = FastAPI(title="ForteBank Violation Detector API", description="AI-сервис для выявления нарушений кассовой дисциплины", version="2.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
@@ -85,7 +86,7 @@ def _representative_evidence(video_path: str):
 
 def _merge_ml_result(result: dict, ml_result: Optional[dict], video_path: str) -> dict:
     if not ml_result:
-        return result
+        return enrich_result(result)
     evidence_by_type = {item.get("type"): item for item in result.get("violations", [])}
     fallback_time, fallback_image = _representative_evidence(video_path)
     merged = []
@@ -104,7 +105,7 @@ def _merge_ml_result(result: dict, ml_result: Optional[dict], video_path: str) -
                 "description": "Модель обнаружила возможный тип нарушения; кадр является ориентировочным и требует проверки оператором.",
                 "evidence_frames": frames,
             })
-    return {**result, "verdict": ml_result.get("verdict", result.get("verdict", "no_violation")), "violations": merged, "ml_violation_probability": ml_result.get("violation_probability"), "inference_mode": "benchmark_ground_truth" if benchmark_mode else "production_ml_temporal"}
+    return enrich_result({**result, "verdict": ml_result.get("verdict", result.get("verdict", "no_violation")), "violations": merged, "ml_violation_probability": ml_result.get("violation_probability"), "inference_mode": "benchmark_ground_truth" if benchmark_mode else "production_ml_temporal"})
 
 
 @app.get("/")
@@ -161,7 +162,3 @@ async def get_job_status(job_id: str, api_key: str = Depends(verify_api_key)):
     elif job["status"] == "failed":
         response["error"] = job.get("error", "Unknown error")
     return response
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
